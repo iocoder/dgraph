@@ -19,8 +19,8 @@ int registerrpc(unsigned long prognum, unsigned long versnum,
                 xdrproc_t inproc, xdrproc_t outproc);
 
 /* XDR routines */
-int xdr_pars(struct XDR *xdrpars, void *input);
-int xdr_ret(struct XDR *xdrpars, void *input);
+int xdr_pars(XDR *xdrpars, void *input);
+int xdr_ret(XDR *xdrpars, void *input);
 
 /* unit routines */
 char *__add_edge(char *input);
