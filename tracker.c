@@ -85,7 +85,7 @@ int main() {
     /* kill all units */
     for (i = 0; i < unit_count; i++) {
         exec_ssh(unit_ip[i], "killall", "-2",
-                 "dgraph_unit", NULL);
+                 "dgraph_unit", "2>", "/dev/null", NULL);
     }
     /* done */
     return 0;
