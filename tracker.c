@@ -11,6 +11,7 @@
 #define UNIT_IP            "unit"
 
 int unit_count;
+int node_count = 0;
 char **unit_ip;
 
 int node_to_unit(int id) {
@@ -27,6 +28,8 @@ int add_edge(int f, int s) {
                          (xdrproc_t) xdr_ret, (char *) &ret);
     if (clnt_stat != 0)
         clnt_perrno (clnt_stat);
+    if (ret)
+        node_count++;
     return ret;
 }
 
@@ -43,9 +46,73 @@ int rem_edge(int f, int s) {
     return ret;
 }
 
+int init_dist(int unit_id, int src) {
+    enum clnt_stat clnt_stat;
+    pars_t input = {src, 0};
+    int ret;
+    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, INITDIST,
+                         (xdrproc_t) xdr_pars, (char *) &input,
+                         (xdrproc_t) xdr_ret, (char *) &ret);
+    if (clnt_stat != 0)
+        clnt_perrno (clnt_stat);
+    return ret;
+}
+
+int update_dist(int src, int dist) {
+    int unit_id = node_to_unit(src);
+    enum clnt_stat clnt_stat;
+    pars_t input = {src, dist};
+    int ret;
+    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, UPDATEDIST,
+                         (xdrproc_t) xdr_pars, (char *) &input,
+                         (xdrproc_t) xdr_ret, (char *) &ret);
+    if (clnt_stat != 0)
+        clnt_perrno (clnt_stat);
+    return ret;
+}
+
+int bellmanford_phase(int unit_id) {
+    enum clnt_stat clnt_stat;
+    pars_t input = {0, 0};
+    int ret;
+    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, BELLFORD,
+                         (xdrproc_t) xdr_pars, (char *) &input,
+                         (xdrproc_t) xdr_ret, (char *) &ret);
+    if (clnt_stat != 0)
+        clnt_perrno (clnt_stat);
+    return ret;
+}
+
+int get_dist(int dest) {
+    int unit_id = node_to_unit(dest);
+    enum clnt_stat clnt_stat;
+    pars_t input = {dest, 0};
+    int ret;
+    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, GETDIST,
+                         (xdrproc_t) xdr_pars, (char *) &input,
+                         (xdrproc_t) xdr_ret, (char *) &ret);
+    if (clnt_stat != 0)
+        clnt_perrno (clnt_stat);
+    return ret;
+}
+
+int query(int src, int dest) {
+    int i, j;
+    /* initialize dist in all nodes/units */
+    for (i = 0; i < unit_count; i++)
+        init_dist(i, src);
+    /* perform n bellmanford phases */
+    for (i = 0; i < node_count; i++)
+        for (j = 0; j < unit_count; j++)
+            bellmanford_phase(j);
+    /* ask for shortest path */
+    return get_dist(dest);
+}
+
 int main() {
     int i;
     char i_str[100], unit_count_str[100];
+    char ip_address_str[4096] = "";
     /* print splash */
     printf("**************************************************************\n");
     printf("* Welcome to dgraph system for distributed graph processing! *\n");
@@ -67,10 +134,16 @@ int main() {
             fprintf(stderr,"Error: can't read %s%d property.\n",UNIT_IP,i+1);
             return -1;
         }
+        if (i)
+            strcat(ip_address_str, " ");
+        strcat(ip_address_str, unit_ip[i]);
         printf("Node %d on %s\n", i+1, unit_ip[i]);
+    }
+    /* run units */
+    for (i = 0; i < unit_count; i++) {
         sprintf(i_str, "%d", i);
         exec_ssh(unit_ip[i], "/usr/local/bin/dgraph_unit", i_str,
-                 unit_count_str, NULL);
+                 unit_count_str, ip_address_str, NULL);
     }
     /* wait for 1 second */
     system("sleep 1");
