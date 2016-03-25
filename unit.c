@@ -123,6 +123,30 @@ char *__rem_edge(char *input) {
     return (char *) ret;
 }
 
+char *__init_dist(char *input) {
+    int *ret = malloc(sizeof(int));
+    *ret = init_dist(*(int *)input);
+    return (char *) ret;
+}
+
+char *__update_dist(char *input) {
+    int *ret = malloc(sizeof(int));
+    *ret = update_dist(((pars_t *)input)->first, ((pars_t *)input)->second);
+    return (char *) ret;
+}
+
+char *__bellmanford_phase(char *input) {
+    int *ret = malloc(sizeof(int));
+    *ret = bellmanford_phase();
+    return (char *) ret;
+}
+
+char *__get_dist(char *input) {
+    int *ret = malloc(sizeof(int));
+    *ret = get_dist(*(int *)input);
+    return (char *) ret;
+}
+
 int main(int argc, char *argv[]) {
     char fname[100];
     /* get id */
