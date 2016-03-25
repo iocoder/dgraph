@@ -30,3 +30,6 @@
 
 # Debug files
 *.dSYM/
+
+dgraph_tracker
+dgraph_unit

@@ -1,0 +1,4 @@
+Notes for installation:
+
+You should first run make install on every machine before running the tracker
+Make sure sshd is up and running.
