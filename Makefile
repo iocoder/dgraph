@@ -12,8 +12,8 @@ install: all
 	sudo cp system.properties /etc/dgraph
 	sudo cp $(TRACKER_OBJ) /usr/local/bin
 	sudo cp $(UNIT_OBJ) /usr/local/bin
-	- sudo useradd -d /home/dgraph -m -s /bin/bash dgraph 2>/dev/null
-	@ printf dgraph123456\\ndgraph123456\\n|sudo passwd dgraph 2>/dev/null
+	## sudo useradd -d /home/dgraph -m -s /bin/bash dgraph 2>/dev/null
+	## printf dgraph123456\\ndgraph123456\\n|sudo passwd dgraph 2>/dev/null
 	sudo mkdir -p /var/log/dgraph
 	sudo chown dgraph /var/log/dgraph
 
