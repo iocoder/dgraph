@@ -150,13 +150,21 @@ int main() {
     printf("R\n");
     /* some stuff */
     printf("%d\n", add_edge(0, 1));
+    system("sleep 0.01");
     printf("%d\n", add_edge(1, 2));
+    system("sleep 0.01");
     printf("%d\n", add_edge(2, 3));
+    system("sleep 0.01");
     printf("%d\n", add_edge(3, 5));
+    system("sleep 0.01");
     printf("%d\n", add_edge(0, 4));
+    system("sleep 0.01");
     printf("%d\n", add_edge(4, 3));
+    system("sleep 0.01");
     printf("%d\n", add_edge(4, 5));
+    system("sleep 0.01");
     printf("%d\n", query(0, 5));
+    system("sleep 0.01");
     /* kill all units */
     for (i = 0; i < unit_count; i++) {
         exec_ssh(unit_ip[i], "killall", "-2",
