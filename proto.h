@@ -2,6 +2,7 @@
 #define __PROTO
 
 #include <rpc/rpc.h>
+#include <limits.h>
 
 #define PRGBASE    ((u_long) 0x20000001)   /* server program (suite) number */
 #define PRGVERS    ((u_long) 1)    /* program version number */
@@ -11,6 +12,7 @@
 #define UPDATEDIST ((u_long) 4)    /* procedure number for look-up */
 #define BELLFORD   ((u_long) 5)    /* procedure number for look-up */
 #define GETDIST    ((u_long) 6)    /* procedure number for look-up */
+#define INF        INT_MAX
 
 typedef struct pars {
     int first;

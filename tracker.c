@@ -1,9 +1,8 @@
 #include <stdio.h>
-
-#include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <string.h>
 
 #include "proto.h"
 
@@ -135,7 +134,7 @@ int main() {
             return -1;
         }
         if (i)
-            strcat(ip_address_str, " ");
+            strcat(ip_address_str, ",");
         strcat(ip_address_str, unit_ip[i]);
         printf("Node %d on %s\n", i+1, unit_ip[i]);
     }
@@ -150,11 +149,14 @@ int main() {
     /* print R */
     printf("R\n");
     /* some stuff */
-    printf("%d\n", add_edge(1, 3));
-    printf("%d\n", add_edge(1, 4));
-    printf("%d\n", add_edge(1, 5));
-    printf("%d\n", rem_edge(1, 5));
-    printf("%d\n", rem_edge(5, 1));
+    printf("%d\n", add_edge(0, 1));
+    printf("%d\n", add_edge(1, 2));
+    printf("%d\n", add_edge(2, 3));
+    printf("%d\n", add_edge(3, 5));
+    printf("%d\n", add_edge(0, 4));
+    printf("%d\n", add_edge(4, 3));
+    printf("%d\n", add_edge(4, 5));
+    printf("%d\n", query(0, 5));
     /* kill all units */
     for (i = 0; i < unit_count; i++) {
         exec_ssh(unit_ip[i], "killall", "-2",
