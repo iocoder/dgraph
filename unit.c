@@ -39,10 +39,10 @@ node_t *get_node_list(int id, node_t *list) {
     return ptr;
 }
 
-node_t *get_node_hash(int id) {
+node_t *get_node(int id) {
     int index = node_to_index(id);
     node_t *list = nodes[index];
-    node_t ret = get_node_list(id, list);
+    node_t *ret = get_node_list(id, list);
     return ret;
 }
 
