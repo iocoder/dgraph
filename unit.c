@@ -53,32 +53,31 @@ void print_subgraph() {
 
 int add_edge(int node1, int node2) {
     node_t *node = get_node(node1);
-    edge_t *edge = malloc(sizeof(edge_t));
-    if (!edge) {
-        /* EMEM */
-        return 0;
-    }
+    edge_t *edge;
     /* src node doesn't exist */
     if (!node) {
         /* create src node */
-        if (!(node = malloc(sizeof(node_t)))) {
-            /* EMEM */
-            free(edge);
-            return 0;
-        }
+        if (!(node = malloc(sizeof(node_t))))
+            return 0; /* EMEM */
         node->next = nodes;
         node->id = node1;
         node->dist_from_src = INF;
         node->edges = NULL;
         nodes = node;
     }
-    /* add edge */
-    edge->next = node->edges;
-    edge->dest = node2;
-    node->edges = edge;
-    /* debug */
-    fprintf(debug, "added %d->%d\n", node1, node2);
-    print_subgraph();
+    /* add edge? */
+    if (node2 != -1) {
+        /* allocate edge */
+        if (!(edge = malloc(sizeof(edge_t))))
+            return 0; /* EMEM */
+        /* set struct members */
+        edge->next = node->edges;
+        edge->dest = node2;
+        node->edges = edge;
+        /* debug */
+        fprintf(debug, "added %d->%d\n", node1, node2);
+        print_subgraph();
+    }
     /* done */
     return 1;
 }
@@ -130,6 +129,7 @@ int init_dist(int src_id) {
 int update_dist(int id, int dist) {
     node_t *node = get_node(id);
     if (!node) {
+#if 0
         /* create src node */
         if (!(node = malloc(sizeof(node_t)))) {
             /* EMEM */
@@ -140,6 +140,8 @@ int update_dist(int id, int dist) {
         node->dist_from_src = INF;
         node->edges = NULL;
         nodes = node;
+#endif
+        return 0;
     }
     if (dist < node->dist_from_src) {
         node->dist_from_src = dist;
@@ -154,9 +156,9 @@ int update_dist_client(int src, int dist) {
     enum clnt_stat clnt_stat;
     pars_t input = {src, dist};
     int ret;
-    if (unit_id == remote_unit_id) 
+    if (unit_id == remote_unit_id)
         return update_dist(src, dist);
-    clnt_stat = callrpc (unit_ip[remote_unit_id], PRGBASE+remote_unit_id, 
+    clnt_stat = callrpc (unit_ip[remote_unit_id], PRGBASE+remote_unit_id,
                          PRGVERS, UPDATEDIST,
                          (xdrproc_t) xdr_pars, (char *) &input,
                          (xdrproc_t) xdr_ret, (char *) &ret);

@@ -18,18 +18,38 @@ int node_to_unit(int id) {
 }
 
 int add_edge(int f, int s) {
-    int unit_id = node_to_unit(f);
+    int unit_id, ret;
     enum clnt_stat clnt_stat;
-    pars_t input = {f, s};
-    int ret;
+    pars_t input;
+    /* send to src machine */
+    input.first = f;
+    input.second = s;
+    unit_id = node_to_unit(f);
     clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, ADDEDGE,
                          (xdrproc_t) xdr_pars, (char *) &input,
                          (xdrproc_t) xdr_ret, (char *) &ret);
     if (clnt_stat != 0)
         clnt_perrno (clnt_stat);
-    if (ret)
-        node_count++;
-    return ret;
+    if (!ret)
+        return 0;
+    /* send to dest machine */
+    input.first = s;
+    input.second = -1;
+    unit_id = node_to_unit(s);
+    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, ADDEDGE,
+                         (xdrproc_t) xdr_pars, (char *) &input,
+                         (xdrproc_t) xdr_ret, (char *) &ret);
+    if (clnt_stat != 0)
+        clnt_perrno (clnt_stat);
+    if (!ret)
+        return 0;
+    /* update count */
+    if (f+1 > node_count)
+        node_count = f+1;
+    if (s+1 > node_count)
+        node_count = s+1;
+    /* done */
+    return 1;
 }
 
 int rem_edge(int f, int s) {
