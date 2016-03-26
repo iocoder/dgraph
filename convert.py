@@ -1,27 +1,30 @@
 #!/usr/bin/python2
 
-def find_path(graph, start, end, path=[]):
-    path = path + [start]
-    if start == end:
-        return path
-    if not graph.has_key(start):
-        return None
-    for node in graph[start]:
-        if node not in path:
-            newpath = find_path(graph, node, end, path)
-            if newpath: return newpath
-    return None
+import sys
 
-def path_len(path):
-    if path == None:
-        return -1
-    else:
-        return len(path)-1
+def find_path(graph, start, end, path=[]):
+    dist = {};
+    for node in graph:
+        if node == start:
+            dist[node] = 0
+        else:
+            dist[node] = 100000
+    for i in graph:
+        for node in graph:
+            for adj in graph[node]:
+                if not dist.has_key(adj):
+                    if adj == start:
+                        dist[adj] = 0
+                    else:
+                        dist[adj] = 100000
+                if (dist[node]+1 < dist[adj]):
+                    dist[adj] = dist[node]+1;
+    return dist[end];
 
 graph = {};
 
 # read graph from file
-f = open('graph1', 'r')
+f = open(sys.argv[1], 'r')
 while 1:
     b = f.readline()
     src = b.split()[0]
@@ -47,7 +50,7 @@ while 1:
     # if cmd == 'A':
     # if cmd == 'D':
     if cmd == 'Q':
-        print(path_len(find_path(graph, src, dst)))
+        print(find_path(graph, src, dst))
 
 # close file
 f.close()

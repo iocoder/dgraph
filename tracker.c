@@ -22,6 +22,8 @@ char **unit_ip;
 batch_entry_t *batch_head = NULL;
 batch_entry_t *batch_tail = NULL;
 
+int *unit_batch_size;
+
 void batch_queue(batch_entry_t *entry) {
     if (batch_tail == NULL) {
         /* empty list */
@@ -178,6 +180,17 @@ int get_relaxed(int unit_id) {
     return ret;
 }
 
+int add_batch(int unit_id, batch_t batch) {
+    enum clnt_stat clnt_stat;
+    int ret;
+    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, ADDBATCH,
+                         (xdrproc_t) xdr_batch, (char *) &batch,
+                         (xdrproc_t) xdr_ret, (char *) &ret);
+    if (clnt_stat != 0)
+        clnt_perrno (clnt_stat);
+    return ret;
+}
+
 int query(int src, int dest) {
     int i, j;
     /* initialize dist in all nodes/units */
@@ -212,6 +225,7 @@ int main() {
     char i_str[100], unit_count_str[100];
     char ip_address_str[4096] = "";
     char buf[4096];
+    batch_entry_t *entry;
     /* print splash */
     printf("**************************************************************\n");
     printf("* Welcome to dgraph system for distributed graph processing! *\n");
@@ -225,6 +239,11 @@ int main() {
         return -1;
     }
     sprintf(unit_count_str, "%d", unit_count);
+    /* allocate unit batch size array */
+    unit_batch_size = malloc(sizeof(int) * unit_count);
+    for (i = 0; i < unit_count; i++) {
+        unit_batch_size[i] = 0;
+    }
     /* get unit IP addresses */
     unit_ip = malloc(sizeof(char *) * unit_count);
     for (i = 0; i < unit_count; i++) {
@@ -249,6 +268,7 @@ int main() {
     /* process input graph */
     while (1) {
         int f, s;
+        batch_entry_t *entry;
         /* read line from standard input */
         fgets(buf, sizeof(buf)-1, stdin);
         /* end of init? */
@@ -259,9 +279,43 @@ int main() {
             continue;
         /* read f & s */
         sscanf(buf, "%d%d", &f, &s);
-        /* add edge */
-        add_edge(f, s);
-        /*system("sleep 0.01");*/
+        /* add to batch */
+        entry = malloc(sizeof(batch_entry_t));
+        entry->cmd = 'A';
+        entry->f = f;
+        entry->s = s;
+        /* enqueue */
+        batch_queue(entry);
+        /* increase counters */
+        unit_batch_size[node_to_unit(entry->f)]++;
+    }
+    /* send in batches */
+    for (i = 0; i < unit_count; i++) {
+        batch_t batch;
+        int j = 0;
+        batch_entry_t *entry = batch_head;
+        batch.count  = unit_batch_size[i];
+        batch.first  = malloc(sizeof(int)*batch.count);
+        batch.second = malloc(sizeof(int)*batch.count);
+        while (entry) {
+            if (node_to_unit(entry->f) == i) {
+                batch.first[j] = entry->f;
+                batch.second[j] = entry->s;
+                j++;
+            }
+            entry = entry->next;
+        }
+        /* now send batch to correspondent node */
+        add_batch(i, batch);
+        /* free allocated stuff */
+        free(batch.first);
+        free(batch.second);
+    }
+    /* free the batch */
+    while (entry = batch_dequeue()) {
+        batch_entry_t *next = entry->next;
+        free(entry);
+        entry = next;
     }
     /* print R */
     printf("R\n");
