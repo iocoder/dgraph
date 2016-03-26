@@ -129,7 +129,7 @@ int init_dist(int src_id) {
 int update_dist(int id, int dist) {
     node_t *node = get_node(id);
     if (!node) {
-#if 0
+#if 1
         /* create src node */
         if (!(node = malloc(sizeof(node_t)))) {
             /* EMEM */
@@ -140,8 +140,9 @@ int update_dist(int id, int dist) {
         node->dist_from_src = INF;
         node->edges = NULL;
         nodes = node;
-#endif
+#else
         return 0;
+#endif
     }
     if (dist < node->dist_from_src) {
         node->dist_from_src = dist;

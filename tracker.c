@@ -33,6 +33,7 @@ int add_edge(int f, int s) {
     if (!ret)
         return 0;
     /* send to dest machine */
+#if 0
     input.first = s;
     input.second = -1;
     unit_id = node_to_unit(s);
@@ -43,6 +44,7 @@ int add_edge(int f, int s) {
         clnt_perrno (clnt_stat);
     if (!ret)
         return 0;
+#endif
     /* update count */
     if (f+1 > node_count)
         node_count = f+1;
