@@ -35,8 +35,8 @@ int xdr_batch_decode(XDR *xdrpars, void *input) {
     batch_t *batch = (batch_t *) input;
     if (!xdr_int(xdrpars, &batch->count))
         return (FALSE);
-    batch->first  = malloc(sizeof(int) * batch->count);
-    batch->second = malloc(sizeof(int) * batch->count);
+    batch->first  = malloc(sizeof(int) * batch->count + 1);
+    batch->second = malloc(sizeof(int) * batch->count + 1);
     for (i = 0; i < batch->count; i++)
         if (!xdr_int(xdrpars, &batch->first[i]))
             return (FALSE);

@@ -224,6 +224,8 @@ void extract_batch(int unit_id) {
     /* free allocated stuff */
     free(batch.first);
     free(batch.second);
+    /* reset counter */
+    unit_batch_size[unit_id] = 0;
 }
 
 int query(int src, int dest) {
@@ -327,7 +329,6 @@ int main() {
         /* reached maximum? */
         if (unit_batch_size[unit_id] == MAXBATCH) {
             extract_batch(unit_id);
-            unit_batch_size[unit_id] = 0;
         }
     }
     /* send all remaining batches */

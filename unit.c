@@ -8,7 +8,8 @@
 #define DEBUG
 #endif
 
-#define MAX_SIZE        10000
+#define MAX_SIZE        10000  /* hashtable size */
+#define MAXBATCH        1000   /* batch size */
 
 typedef struct edge_str {
     struct edge_str *next;
@@ -31,6 +32,7 @@ FILE *debug;
 int unit_id;
 int unit_count;
 char **unit_ip;
+int *unit_batch_size;
 int relaxed;
 
 batch_entry_t *batch_head = NULL;
@@ -38,6 +40,9 @@ batch_entry_t *batch_tail = NULL;
 
 node_t **hash_nodes = NULL;
 list_node_t *list_nodes = NULL;
+
+void insert_an_update(int node, int dist);
+void send_rem_batches();
 
 void batch_queue(batch_entry_t *entry) {
     if (batch_tail == NULL) {
@@ -282,11 +287,12 @@ int bellmanford_phase() {
     while (list_node) {
         edge_t *edge = list_node->node->edges;
         while (list_node->node->dist_from_src != INF && edge) {
-            update_dist_client(edge->dest, list_node->node->dist_from_src+1);
+            insert_an_update(edge->dest, list_node->node->dist_from_src+1);
             edge = edge->next;
         }
         list_node = list_node->next;
     }
+    send_rem_batches();
     return 1;
 }
 
@@ -310,9 +316,98 @@ int get_relaxed() {
 
 int add_batch(batch_t *batch) {
     int i;
-    fprintf(debug, "received batch! count: %d\n", batch->count);
+    fprintf(debug, "received add batch! count: %d\n", batch->count);
     for (i = 0; i < batch->count; i++)
         add_edge(batch->first[i], batch->second[i]);
+}
+
+int update_batch(batch_t *batch) {
+    int i;
+    fprintf(debug, "received update batch! count: %d\n", batch->count);
+    for (i = 0; i < batch->count; i++)
+        update_dist(batch->first[i], batch->second[i]);
+}
+
+int update_batch_client(int unit_id, batch_t batch) {
+    enum clnt_stat clnt_stat;
+    int ret;
+    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, UPDBATCH,
+                         (xdrproc_t) xdr_batch_encode, (char *) &batch,
+                         (xdrproc_t) xdr_ret, (char *) &ret);
+    if (clnt_stat != 0)
+        clnt_perrno (clnt_stat);
+    return ret;
+}
+
+void extract_batch(int uid) {
+    batch_t batch;
+    int j = 0;
+    batch_entry_t *prev = NULL;
+    batch_entry_t *entry = batch_head;
+    batch_entry_t *next;
+    batch.count  = unit_batch_size[uid];
+    batch.first  = malloc(sizeof(int)*batch.count + 1);
+    batch.second = malloc(sizeof(int)*batch.count + 1);
+    while (entry) {
+        next = entry->next;
+        if (node_to_unit(entry->f) == uid) {
+            batch.first[j] = entry->f;
+            batch.second[j] = entry->s;
+            j++;
+            if (prev) {
+                prev->next = next;
+                if (!next)
+                    batch_tail = prev;
+            } else {
+                batch_head = next;
+                if (!next)
+                    batch_tail = batch_head;
+            }
+            free(entry);
+        } else {
+            prev = entry;
+        }
+        entry = next;
+    }
+    /* now send batch to correspondent node */
+    if (batch.count)
+        update_batch_client(uid, batch);
+    /* free allocated stuff */
+    free(batch.first);
+    free(batch.second);
+    /* reset counter */
+    unit_batch_size[uid] = 0;
+}
+
+void insert_an_update(int node, int dist) {
+    int uid;
+    batch_entry_t *entry;
+    if (unit_id == node_to_unit(node)) {
+        update_dist(node, dist);
+    } else {
+        /* add to batch */
+        entry = malloc(sizeof(batch_entry_t));
+        entry->cmd = 'U';
+        entry->f = node;
+        entry->s = dist;
+        /* enqueue */
+        batch_queue(entry);
+        /* increase counters */
+        uid = node_to_unit(entry->f);
+        unit_batch_size[uid]++;
+        /* reached maximum? */
+        if (unit_batch_size[uid] == MAXBATCH) {
+            extract_batch(uid);
+        }
+    }
+}
+
+void send_rem_batches() {
+    /* send all remaining batches */
+    int i;
+    for (i = 0; i < unit_count; i++) {
+        extract_batch(i);
+    }
 }
 
 void exit_unit(int sig) {
@@ -378,6 +473,15 @@ char *__add_batch(char *input) {
     return (char *) ret;
 }
 
+char *__update_batch(char *input) {
+    batch_t *batch = (batch_t *) input;
+    int *ret = malloc(sizeof(int));
+    *ret = update_batch(batch);
+    free(batch->first);
+    free(batch->second);
+    return (char *) ret;
+}
+
 int main(int argc, char *argv[]) {
     char fname[100];
     char *tok;
@@ -396,9 +500,14 @@ int main(int argc, char *argv[]) {
         unit_ip[i++] = strcpy(malloc(strlen(tok)+1), tok);
         tok = strtok(NULL, ",");
     }
+    /* allocate unit batch size array */
+    unit_batch_size = malloc(sizeof(int) * unit_count);
+    for (i = 0; i < unit_count; i++) {
+        unit_batch_size[i] = 0;
+    }
     /* allocate hashtable */
     hash_nodes = malloc(sizeof(node_t*) * MAX_SIZE);
-    for(i=0; i<MAX_SIZE; i++) {
+    for (i=0; i<MAX_SIZE; i++) {
         hash_nodes[i] = NULL;
     }
     /* open debug file */
@@ -431,6 +540,8 @@ int main(int argc, char *argv[]) {
                 __get_relaxed, (xdrproc_t) xdr_pars, (xdrproc_t) xdr_ret);
     registerrpc(PRGBASE+unit_id, PRGVERS, ADDBATCH,
                 __add_batch, (xdrproc_t) xdr_batch_decode, (xdrproc_t) xdr_ret);
+    registerrpc(PRGBASE+unit_id, PRGVERS, UPDBATCH, __update_batch,
+                (xdrproc_t) xdr_batch_decode, (xdrproc_t) xdr_ret);
     /* output something */
     fprintf(debug, "Unit %d started.\n", unit_id);
     // print_subgraph();
