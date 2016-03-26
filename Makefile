@@ -18,4 +18,4 @@ install: all
 	sudo chown dgraph /var/log/dgraph
 
 run: install
-	$(TRACKER_OBJ) < graph2
+	$(TRACKER_OBJ) < input

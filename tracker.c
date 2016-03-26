@@ -9,6 +9,8 @@
 #define UNIT_COUNT         "unit_count"
 #define UNIT_IP            "unit"
 
+#define MAXBATCH           1
+
 typedef struct batch_entry {
     struct batch_entry *next;
     char cmd;
@@ -184,7 +186,7 @@ int add_batch(int unit_id, batch_t batch) {
     enum clnt_stat clnt_stat;
     int ret;
     clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, ADDBATCH,
-                         (xdrproc_t) xdr_batch, (char *) &batch,
+                         (xdrproc_t) xdr_batch_encode, (char *) &batch,
                          (xdrproc_t) xdr_ret, (char *) &ret);
     if (clnt_stat != 0)
         clnt_perrno (clnt_stat);
@@ -301,6 +303,10 @@ int main() {
             if (node_to_unit(entry->f) == i) {
                 batch.first[j] = entry->f;
                 batch.second[j] = entry->s;
+                if (entry->f+1 > node_count)
+                    node_count = entry->f + 1;
+                if (entry->s+1 > node_count)
+                    node_count = entry->s + 1;
                 j++;
             }
             entry = entry->next;
