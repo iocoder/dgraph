@@ -223,6 +223,13 @@ int get_relaxed() {
     return relaxed;
 }
 
+int add_batch(batch_t *batch) {
+    int i;
+    fprintf(debug, "received batch! count: %d\n", batch->count);
+    for (i = 0; i < batch->count; i++)
+        add_edge(batch->first[i], batch->second[i]);
+}
+
 void exit_unit(int sig) {
     /* safe exit */
     fclose(debug);
@@ -277,6 +284,15 @@ char *__get_relaxed(char *input) {
     return (char *) ret;
 }
 
+char *__add_batch(char *input) {
+    batch_t *batch = (batch_t *) input;
+    int *ret = malloc(sizeof(int));
+    *ret = add_batch(batch);
+    free(batch->first);
+    free(batch->second);
+    return (char *) ret;
+}
+
 int main(int argc, char *argv[]) {
     char fname[100];
     char *tok;
@@ -324,9 +340,8 @@ int main(int argc, char *argv[]) {
                 __init_relaxed, (xdrproc_t) xdr_pars, (xdrproc_t) xdr_ret);
     registerrpc(PRGBASE+unit_id, PRGVERS, GETRELAX,
                 __get_relaxed, (xdrproc_t) xdr_pars, (xdrproc_t) xdr_ret);
-    
-    add_edge(1, 2);
-    
+    registerrpc(PRGBASE+unit_id, PRGVERS, ADDBATCH,
+                __add_batch, (xdrproc_t) xdr_batch_decode, (xdrproc_t) xdr_ret);
     /* output something */
     fprintf(debug, "Unit %d started.\n", unit_id);
     /* run server */

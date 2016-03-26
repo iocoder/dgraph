@@ -38,7 +38,8 @@ int registerrpc(unsigned long prognum, unsigned long versnum,
 /* XDR routines */
 int xdr_pars(XDR *xdrpars, void *input);
 int xdr_ret(XDR *xdrpars, void *input);
-int xdr_batch(XDR *xdrpars, void *input);
+int xdr_batch_encode(XDR *xdrpars, void *input);
+int xdr_batch_decode(XDR *xdrpars, void *input);
 
 /* unit routines */
 char *__add_edge(char *input);

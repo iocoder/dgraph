@@ -18,9 +18,29 @@ int xdr_ret(XDR *xdrpars, void *input) {
 int xdr_batch_encode(XDR *xdrpars, void *input) {
     int i;
     batch_t *batch = (batch_t *) input;
-    if (!xdr_int(xdrpars, batch->count))
+    if (!xdr_int(xdrpars, &batch->count))
         return (FALSE);
-    for (i = 0;)
-    if (!xdr_int(xdrpars, batch->first))
+    for (i = 0; i < batch->count; i++)
+        if (!xdr_int(xdrpars, &batch->first[i]))
+            return (FALSE);
+    for (i = 0; i < batch->count; i++)
+        if (!xdr_int(xdrpars, &batch->second[i]))
+            return (FALSE);
+    return (TRUE);
+}
+
+int xdr_batch_decode(XDR *xdrpars, void *input) {
+    int i;
+    batch_t *batch = (batch_t *) input;
+    if (!xdr_int(xdrpars, &batch->count))
+        return (FALSE);
+    batch->first  = malloc(sizeof(int) * batch->count);
+    batch->second = malloc(sizeof(int) * batch->count);
+    for (i = 0; i < batch->count; i++)
+        if (!xdr_int(xdrpars, &batch->first[i]))
+            return (FALSE);
+    for (i = 0; i < batch->count; i++)
+        if (!xdr_int(xdrpars, &batch->second[i]))
+            return (FALSE);
     return (TRUE);
 }
