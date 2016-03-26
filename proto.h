@@ -16,6 +16,7 @@
 #define GETRELAX   ((u_long)  8)   /* procedure number */
 #define ADDBATCH   ((u_long)  9)   /* procedure number */
 #define UPDBATCH   ((u_long) 10)   /* procedure number */
+#define FINISHED   ((u_long) 11)   /* procedure number */
 
 #define INF        INT_MAX
 

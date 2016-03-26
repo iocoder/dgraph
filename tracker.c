@@ -1,22 +1,30 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <signal.h>
+#include <fcntl.h>
 
 #include "proto.h"
 
 #define UNIT_COUNT         "unit_count"
 #define UNIT_IP            "unit"
+#define TRACKER_IP         "tracker"
 
 #define MAXBATCH           1000
 
 int unit_count;
 int node_count = 0;
 char **unit_ip;
+char *tracker_ip;
 batch_entry_t *batch_head = NULL;
 batch_entry_t *batch_tail = NULL;
 int *unit_batch_size;
+volatile int finished;
+int pipefd[2] = {10, 11};
 
 void batch_queue(batch_entry_t *entry) {
     if (batch_tail == NULL) {
@@ -236,14 +244,23 @@ int query(int src, int dest) {
     /* perform n bellmanford phases */
     for (i = 0; i < node_count; i++) {
         int relaxed = 0;
+        finished = 0;
         /* initialize relaxed */
         for (j = 0; j < unit_count; j++) {
             init_relaxed(j);
         }
-        /* relax */
+        /* start bellmanford phase */
         for (j = 0; j < unit_count; j++) {
             /* printf("phase %d,%d\n", i, j); */
             bellmanford_phase(j);
+        }
+        /* wait until bellmanford is done */
+        while (finished < unit_count) {
+            char c;
+            /* read from pipe */
+            read(pipefd[0], &c, 1);
+            /* increase counter */
+            finished++;
         }
         /* relaxed? */
         for (j = 0; j < unit_count; j++) {
@@ -257,16 +274,32 @@ int query(int src, int dest) {
     return get_dist(dest);
 }
 
+char *__finished(char *input) {
+    char *ret = malloc(sizeof(int));
+    char c;
+    /* write to pipe */
+    write(pipefd[1], &c, 1);
+    return ret;
+}
+
+void exit_tracker(int sig) {
+    /* safe exit */
+    exit(0);
+}
+
 int main() {
     int i;
     char i_str[100], unit_count_str[100];
     char ip_address_str[4096] = "";
     char buf[4096];
+    int childpid;
     batch_entry_t *entry;
     /* print splash */
     printf("**************************************************************\n");
     printf("* Welcome to dgraph system for distributed graph processing! *\n");
     printf("**************************************************************\n");
+    /* register signal handler */
+    signal(SIGINT, exit_tracker);
     /* read configuration file */
     read_conf();
     /* read number of units */
@@ -294,11 +327,29 @@ int main() {
         strcat(ip_address_str, unit_ip[i]);
         printf("Node %d on %s\n", i+1, unit_ip[i]);
     }
+    /* get tracker ip */
+    tracker_ip = get_val_str(TRACKER_IP, -1);
+    if (!tracker_ip) {
+        fprintf(stderr,"Error: can't read %s property.\n", TRACKER_IP);
+        return -1;
+    }
+    strcat(ip_address_str, ",");
+    strcat(ip_address_str, tracker_ip);
     /* run units */
     for (i = 0; i < unit_count; i++) {
         sprintf(i_str, "%d", i);
         exec_ssh(unit_ip[i], "/usr/local/bin/dgraph_unit", i_str,
                  unit_count_str, ip_address_str, NULL);
+    }
+    /* open pipe */
+    pipe(pipefd);
+    /* fork and reserve */
+    if (!(childpid = fork())) {
+        /* register tracker RPC routines */
+        registerrpc(PRGBASE+unit_count, PRGVERS, FINISHED, __finished,
+                    (xdrproc_t) xdr_pars, (xdrproc_t) xdr_ret);
+        /* serve RPC calls */
+        svc_run();
     }
     /* wait for 1 second */
     system("sleep 0.3");
@@ -387,6 +438,8 @@ int main() {
         exec_ssh(unit_ip[i], "killall", "-2",
                  "dgraph_unit", "2>", "/dev/null", NULL);
     }
+    /* kill tracker RPC handler */
+    kill(childpid, SIGINT);
     /* done */
     return 0;
 }

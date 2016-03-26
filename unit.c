@@ -1,7 +1,11 @@
+#define _GNU_SOURCE
+#include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <unistd.h>
+#include <pthread.h>
 #include "proto.h"
 
 #if 0
@@ -10,6 +14,7 @@
 
 #define MAX_SIZE        10000  /* hashtable size */
 #define MAXBATCH        1000   /* batch size */
+#define STACKSIZE       0x1000000 /* bellman ford stack size */
 
 typedef struct edge_str {
     struct edge_str *next;
@@ -32,8 +37,12 @@ FILE *debug;
 int unit_id;
 int unit_count;
 char **unit_ip;
+char *tracker_ip;
 int *unit_batch_size;
 int relaxed;
+char stack[STACKSIZE];
+int childpid;
+int pipefd[2] = {10, 11};
 
 batch_entry_t *batch_head = NULL;
 batch_entry_t *batch_tail = NULL;
@@ -282,8 +291,22 @@ int update_dist_client(int src, int dist) {
     return ret;
 }
 
-int bellmanford_phase() {
+int finished_client() {
+    enum clnt_stat clnt_stat;
+    pars_t input = {0, 0};
+    int ret;
+    clnt_stat = callrpc (tracker_ip, PRGBASE+unit_count,
+                         PRGVERS, FINISHED,
+                         (xdrproc_t) xdr_pars, (char *) &input,
+                         (xdrproc_t) xdr_ret, (char *) &ret);
+    if (clnt_stat != 0)
+        clnt_perrno (clnt_stat);
+    return ret;
+}
+
+void bellmanford_phase() {
     list_node_t *list_node = list_nodes;
+    /*fprintf(debug, "bellman started %d\n", unit_id);*/
     while (list_node) {
         edge_t *edge = list_node->node->edges;
         while (list_node->node->dist_from_src != INF && edge) {
@@ -293,7 +316,8 @@ int bellmanford_phase() {
         list_node = list_node->next;
     }
     send_rem_batches();
-    return 1;
+    finished_client();
+    /*fprintf(debug, "bellman finished %d\n", unit_id);*/
 }
 
 int get_dist(int id) {
@@ -323,7 +347,7 @@ int add_batch(batch_t *batch) {
 
 int update_batch(batch_t *batch) {
     int i;
-    fprintf(debug, "received update batch! count: %d\n", batch->count);
+    /*fprintf(debug, "received update batch! count: %d\n", batch->count);*/
     for (i = 0; i < batch->count; i++)
         update_dist(batch->first[i], batch->second[i]);
 }
@@ -406,14 +430,10 @@ void send_rem_batches() {
     /* send all remaining batches */
     int i;
     for (i = 0; i < unit_count; i++) {
-        extract_batch(i);
+        if (unit_batch_size[i]) {
+            extract_batch(i);
+        }
     }
-}
-
-void exit_unit(int sig) {
-    /* safe exit */
-    fclose(debug);
-    exit(0);
 }
 
 char *__add_edge(char *input) {
@@ -442,7 +462,12 @@ char *__update_dist(char *input) {
 
 char *__bellmanford_phase(char *input) {
     int *ret = malloc(sizeof(int));
-    *ret = bellmanford_phase();
+    char c;
+#if 1
+    write(pipefd[1], &c, 1);
+#else
+    bellmanford_phase();
+#endif
     return (char *) ret;
 }
 
@@ -482,10 +507,25 @@ char *__update_batch(char *input) {
     return (char *) ret;
 }
 
+void exit_unit(int sig) {
+    /* safe exit */
+    fclose(debug);
+    exit(0);
+}
+
+void *child_main(void *arg) {
+    while(1) {
+        char c;
+        read(pipefd[0], &c, 1);
+        bellmanford_phase();
+    }
+}
+
 int main(int argc, char *argv[]) {
     char fname[100];
     char *tok;
     int i = 0;
+    pthread_t child_thread;
     /* get id */
     if (argc != 4) {
         fprintf(stderr, "Error: dgraph unit: invalid arguments\n");
@@ -496,10 +536,11 @@ int main(int argc, char *argv[]) {
     unit_count = atoi(argv[2]);
     unit_ip = malloc(sizeof(char *) * unit_count);
     tok = strtok(argv[3], ",");
-    while (tok) {
+    while (i < unit_count) {
         unit_ip[i++] = strcpy(malloc(strlen(tok)+1), tok);
         tok = strtok(NULL, ",");
     }
+    tracker_ip = strcpy(malloc(strlen(tok)+1), tok);
     /* allocate unit batch size array */
     unit_batch_size = malloc(sizeof(int) * unit_count);
     for (i = 0; i < unit_count; i++) {
@@ -517,8 +558,14 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Error: dgraph unit: can't open %s\n", fname);
         return -1;
     }
+    fprintf(debug, "tracker: %s\n", tracker_ip);
     /* disable C buffer */
     setvbuf(debug, NULL, _IONBF, 0);
+    /* open pipe */
+    pipe(pipefd);
+    /* open child process to handle bellmanford */
+    /*childpid = clone(child_main, &stack[STACKSIZE], CLONE_VM, NULL);*/
+    pthread_create(&child_thread, NULL, child_main, NULL);
     /* register signal handler */
     signal(SIGINT, exit_unit);
     /* register rpc routines */

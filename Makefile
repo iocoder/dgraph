@@ -5,7 +5,7 @@ UNIT_OBJ=dgraph_unit
 
 all:
 	gcc -o $(TRACKER_OBJ) $(TRACKER)
-	gcc -o $(UNIT_OBJ) $(UNIT)
+	gcc -o $(UNIT_OBJ) -pthread $(UNIT)
 
 install: all
 	sudo mkdir -p /etc/dgraph
@@ -18,4 +18,4 @@ install: all
 	sudo chown dgraph /var/log/dgraph
 
 run: install
-	$(TRACKER_OBJ) < graph3
+	$(TRACKER_OBJ) < graph4
