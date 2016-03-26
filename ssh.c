@@ -8,6 +8,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
 
 #define USERNAME "dgraph"
 #define PASSWORD "dgraph123456"
@@ -42,6 +43,7 @@ int exec_ssh(char *hostname, char *cmd, ...) {
         /*waitpid(pid, &status, 0);*/
     } else {
         /* child */
+        close(0);
         execvp(argv[0], argv);
         fprintf(stderr, "Error: can't execute %s\n", argv[0]);
         exit(-1);

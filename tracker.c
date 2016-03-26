@@ -9,9 +9,44 @@
 #define UNIT_COUNT         "unit_count"
 #define UNIT_IP            "unit"
 
+typedef struct batch_entry {
+    struct batch_entry *next;
+    char cmd;
+    int f;
+    int s;
+} batch_entry_t;
+
 int unit_count;
 int node_count = 0;
 char **unit_ip;
+batch_entry_t *batch_head = NULL;
+batch_entry_t *batch_tail = NULL;
+
+void batch_queue(batch_entry_t *entry) {
+    if (batch_tail == NULL) {
+        /* empty list */
+        (batch_head = batch_tail = entry)->next = NULL;
+    } else {
+        /* non-empty list */
+        entry->next = NULL;
+        batch_tail->next = entry;
+        batch_tail = entry;
+    }
+}
+
+batch_entry_t *batch_dequeue() {
+    batch_entry_t *entry = NULL;
+    if (batch_head) {
+        /* remove from head */
+        entry = batch_head;
+        batch_head = batch_head->next;
+        if (!batch_head) {
+            batch_tail = NULL;
+        }
+        entry->next = NULL;
+    }
+    return entry;
+}
 
 int node_to_unit(int id) {
     return (id % unit_count);
@@ -114,6 +149,8 @@ int get_dist(int dest) {
                          (xdrproc_t) xdr_ret, (char *) &ret);
     if (clnt_stat != 0)
         clnt_perrno (clnt_stat);
+    if (ret == INF)
+        return -1;
     return ret;
 }
 
@@ -134,6 +171,7 @@ int main() {
     int i;
     char i_str[100], unit_count_str[100];
     char ip_address_str[4096] = "";
+    char buf[4096];
     /* print splash */
     printf("**************************************************************\n");
     printf("* Welcome to dgraph system for distributed graph processing! *\n");
@@ -168,25 +206,70 @@ int main() {
     }
     /* wait for 1 second */
     system("sleep 1");
+    /* process input graph */
+    while (1) {
+        int f, s;
+        /* read line from standard input */
+        fgets(buf, sizeof(buf)-1, stdin);
+        /* end of init? */
+        if (!strcmp(buf, "S\n"))
+            break;
+        /* empty line */
+        if (!strcmp(buf, "\n"))
+            continue;
+        /* read f & s */
+        sscanf(buf, "%d%d", &f, &s);
+        /* add edge */
+        add_edge(f, s);
+        system("sleep 0.01");
+    }
     /* print R */
     printf("R\n");
-    /* some stuff */
-    printf("%d\n", add_edge(0, 1));
-    system("sleep 0.01");
-    printf("%d\n", add_edge(1, 2));
-    system("sleep 0.01");
-    printf("%d\n", add_edge(2, 3));
-    system("sleep 0.01");
-    printf("%d\n", add_edge(3, 5));
-    system("sleep 0.01");
-    printf("%d\n", add_edge(0, 4));
-    system("sleep 0.01");
-    printf("%d\n", add_edge(4, 3));
-    system("sleep 0.01");
-    printf("%d\n", add_edge(4, 5));
-    system("sleep 0.01");
-    printf("%d\n", query(0, 5));
-    system("sleep 0.01");
+    /* wait for batches? */
+    while (1) {
+        char cmd;
+        int f, s;
+        batch_entry_t *entry;
+        /* read line from standard input */
+        fgets(buf, sizeof(buf)-1, stdin);
+        /* terminate? */
+        if (!strcmp(buf, "Q\n"))
+            break;
+        /* empty line? */
+        if (!strcmp(buf, "\n"))
+            continue;
+        /* end of batch? */
+        if (!strcmp(buf, "F\n")) {
+            /* process batch */
+            while (entry = batch_dequeue()) {
+                switch (entry->cmd) {
+                    case 'A':
+                        add_edge(entry->f, entry->s);
+                        break;
+                    case 'D':
+                        rem_edge(entry->f, entry->s);
+                        break;
+                    case 'Q':
+                        printf("%d\n", query(entry->f, entry->s));
+                        break;
+                    default:
+                        fprintf(stderr, "Invalid command %c\n", entry->cmd);
+                        break;
+                }
+                system("sleep 0.01");
+            }
+        } else {
+            /* add entry to batch queue */
+            sscanf(buf, "%c%d%d", &cmd, &f, &s);
+            /* allocate structure */
+            entry = malloc(sizeof(batch_entry_t));
+            entry->cmd = cmd;
+            entry->f = f;
+            entry->s = s;
+            /* enqueue */
+            batch_queue(entry);
+        }
+    }
     /* kill all units */
     for (i = 0; i < unit_count; i++) {
         exec_ssh(unit_ip[i], "killall", "-2",

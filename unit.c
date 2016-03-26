@@ -257,6 +257,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Error: dgraph unit: can't open %s\n", fname);
         return -1;
     }
+    /* disable C buffer */
+    setvbuf(debug, NULL, _IONBF, 0);
     /* register signal handler */
     signal(SIGINT, exit_unit);
     /* register rpc routines */
