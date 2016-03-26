@@ -9,7 +9,7 @@ int unit_id;
 int unit_count;
 char **unit_ip;
 int relaxed;
-int MAX_SIZE = 100;
+int MAX_SIZE = 5;
 
 typedef struct edge_str {
     struct edge_str *next;
@@ -23,7 +23,13 @@ typedef struct node_str {
     struct edge_str *edges;
 } node_t;
 
-node_t **nodes = NULL;
+typedef struct list_node_str {
+    struct list_node_str *next;
+    node_t *node;
+} list_node_t;
+
+node_t **hash_nodes = NULL;
+list_node_t *list_nodes = NULL;
 
 int node_to_unit(int id) {
     return (id % unit_count);
@@ -39,10 +45,10 @@ node_t *get_node_list(int id, node_t *list) {
     return ptr;
 }
 
-node_t *get_node_hash(int id) {
+node_t *get_node(int id) {
     int index = node_to_index(id);
-    node_t *list = nodes[index];
-    node_t ret = get_node_list(id, list);
+    node_t *list = hash_nodes[index];
+    node_t *ret = get_node_list(id, list);
     return ret;
 }
 
@@ -66,8 +72,26 @@ void print_subgraph() {
     fprintf(debug, "--------------\n");
     int i;
     for(i=0; i<MAX_SIZE; i++) {
-        fprintf(debug, "hash: %d\n", i);
-        print_list(nodes[i]);
+        fprintf(debug, "hash %d: \n", i);
+        print_list(hash_nodes[i]);
+    }
+    fprintf(debug, "---------------------------------------\n");
+}
+
+void print_subgraph_() {
+    fprintf(debug, "CURRENT GRAPH\n");
+    fprintf(debug, "--------------\n");
+    list_node_t *curnode = list_nodes;
+    edge_t *curedge;
+    while (curnode) {
+        fprintf(debug, "node %d (%d): ", curnode->node->id, curnode->node->dist_from_src);
+        curedge = curnode->node->edges;
+        while (curedge) {
+            fprintf(debug, "%d ", curedge->dest);
+            curedge = curedge->next;
+        }
+        fprintf(debug, "\n");
+        curnode = curnode->next;
     }
     fprintf(debug, "---------------------------------------\n");
 }
@@ -81,12 +105,18 @@ int add_edge(int node1, int node2) {
         if (!(node = malloc(sizeof(node_t))))
             return 0; /* EMEM */
         int index = node_to_index(node1);
-        node_t *list = nodes[index];
-        node->next = list;
+        node->next = hash_nodes[index];
         node->id = node1;
         node->dist_from_src = INF;
         node->edges = NULL;
-        list = node;
+        hash_nodes[index] = node;
+        /* create node in linked list of all nodes */
+        list_node_t *list_node = NULL;
+        if (!(list_node = malloc(sizeof(list_node_t))))
+            return 0; /* EMEM */
+        list_node->next = list_nodes;
+        list_node->node = node;
+        list_nodes = list_node;
     }
     /* add edge? */
     if (node2 != -1) {
@@ -136,13 +166,13 @@ int rem_edge(int node1, int node2) {
 }
 
 int init_dist(int src_id) {
-    node_t *node = nodes;
-    while (node) {
-        if(node->id == src_id)
-            node->dist_from_src = 0;
+    list_node_t *list_node = list_nodes;
+    while (list_node) {
+        if(list_node->node->id == src_id)
+            list_node->node->dist_from_src = 0;
         else
-            node->dist_from_src = INF;
-        node = node->next;
+            list_node->node->dist_from_src = INF;
+        list_node = list_node->next;
     }
     fprintf(debug, "distances initialized\n");
     print_subgraph();
@@ -154,15 +184,21 @@ int update_dist(int id, int dist) {
     if (!node) {
 #if 1
         /* create src node */
-        if (!(node = malloc(sizeof(node_t)))) {
-            /* EMEM */
-            return 0;
-        }
-        node->next = nodes;
+        if (!(node = malloc(sizeof(node_t))))
+            return 0; /* EMEM */
+        int index = node_to_index(id);
+        node->next = hash_nodes[index];
         node->id = id;
         node->dist_from_src = INF;
         node->edges = NULL;
-        nodes = node;
+        hash_nodes[index] = node;
+        /* create node in linked list of all nodes */
+        list_node_t *list_node = NULL;
+        if (!(list_node = malloc(sizeof(list_node_t))))
+            return 0; /* EMEM */
+        list_node->next = list_nodes;
+        list_node->node = node;
+        list_nodes = list_node;
 #else
         return 0;
 #endif
@@ -193,14 +229,14 @@ int update_dist_client(int src, int dist) {
 }
 
 int bellmanford_phase() {
-    node_t *node = nodes;
-    while (node) {
-        edge_t *edge = node->edges;
-        while (node->dist_from_src != INF && edge) {
-            update_dist_client(edge->dest, node->dist_from_src+1);
+    node_t *list_node = list_nodes;
+    while (list_node) {
+        edge_t *edge = list_node->node->edges;
+        while (list_node->node->dist_from_src != INF && edge) {
+            update_dist_client(edge->dest, list_node->node->dist_from_src+1);
             edge = edge->next;
         }
-        node = node->next;
+        list_node = list_node->next;
     }
     return 1;
 }
@@ -306,7 +342,10 @@ int main(int argc, char *argv[]) {
     unit_id = atoi(argv[1]);
     unit_count = atoi(argv[2]);
     unit_ip = malloc(sizeof(char *) * unit_count);
-    nodes   = malloc(sizeof(node_t*) * MAX_SIZE);
+    hash_nodes = malloc(sizeof(node_t*) * MAX_SIZE);
+    for(i=0; i<MAX_SIZE; i++) {
+        hash_nodes[i] = NULL;
+    }
     tok = strtok(argv[3], ",");
     while (tok) {
         unit_ip[i++] = strcpy(malloc(strlen(tok)+1), tok);
@@ -344,6 +383,13 @@ int main(int argc, char *argv[]) {
                 __add_batch, (xdrproc_t) xdr_batch_decode, (xdrproc_t) xdr_ret);
     /* output something */
     fprintf(debug, "Unit %d started.\n", unit_id);
+    add_edge(1,2);
+    add_edge(1,10);
+    add_edge(5,20);
+    add_edge(9,200);
+    add_edge(21,2231);
+    // print_subgraph();
+    print_subgraph_();
     /* run server */
     svc_run();
 }
