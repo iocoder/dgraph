@@ -30,6 +30,13 @@ typedef struct batch {
     int *second;
 } batch_t;
 
+typedef struct batch_entry {
+    struct batch_entry *next;
+    char cmd;
+    int f;
+    int s;
+} batch_entry_t;
+
 /* RPC outines */
 int registerrpc(unsigned long prognum, unsigned long versnum,
                 unsigned long procnum, char *(*procname)(char *),

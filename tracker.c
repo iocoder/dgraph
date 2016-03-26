@@ -11,13 +11,6 @@
 
 #define MAXBATCH           1000
 
-typedef struct batch_entry {
-    struct batch_entry *next;
-    char cmd;
-    int f;
-    int s;
-} batch_entry_t;
-
 int unit_count;
 int node_count = 0;
 char **unit_ip;
@@ -306,7 +299,7 @@ int main() {
                  unit_count_str, ip_address_str, NULL);
     }
     /* wait for 1 second */
-    system("sleep 1");
+    system("sleep 0.3");
     /* process input graph */
     while (1) {
         int f, s, unit_id;
