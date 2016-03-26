@@ -8,6 +8,7 @@ FILE *debug;
 int unit_id;
 int unit_count;
 char **unit_ip;
+int relaxed;
 
 typedef struct edge_str {
     struct edge_str *next;
@@ -145,6 +146,7 @@ int update_dist(int id, int dist) {
 #endif
     }
     if (dist < node->dist_from_src) {
+        relaxed = 1;
         node->dist_from_src = dist;
         fprintf(debug, "distances updated\n");
         print_subgraph();
@@ -190,6 +192,15 @@ int get_dist(int id) {
     return node->dist_from_src;
 }
 
+int init_relaxed() {
+    relaxed = 0;
+    return 1;
+}
+
+int get_relaxed() {
+    return relaxed;
+}
+
 void exit_unit(int sig) {
     /* safe exit */
     fclose(debug);
@@ -229,6 +240,18 @@ char *__bellmanford_phase(char *input) {
 char *__get_dist(char *input) {
     int *ret = malloc(sizeof(int));
     *ret = get_dist(((pars_t *)input)->first);
+    return (char *) ret;
+}
+
+char *__init_relaxed(char *input) {
+    int *ret = malloc(sizeof(int));
+    *ret = init_relaxed();
+    return (char *) ret;
+}
+
+char *__get_relaxed(char *input) {
+    int *ret = malloc(sizeof(int));
+    *ret = get_relaxed();
     return (char *) ret;
 }
 
@@ -274,6 +297,10 @@ int main(int argc, char *argv[]) {
                 __bellmanford_phase, (xdrproc_t) xdr_pars, (xdrproc_t) xdr_ret);
     registerrpc(PRGBASE+unit_id, PRGVERS, GETDIST,
                 __get_dist, (xdrproc_t) xdr_pars, (xdrproc_t) xdr_ret);
+    registerrpc(PRGBASE+unit_id, PRGVERS, INITRELAX,
+                __init_relaxed, (xdrproc_t) xdr_pars, (xdrproc_t) xdr_ret);
+    registerrpc(PRGBASE+unit_id, PRGVERS, GETRELAX,
+                __get_relaxed, (xdrproc_t) xdr_pars, (xdrproc_t) xdr_ret);
     /* output something */
     fprintf(debug, "Unit %d started.\n", unit_id);
     /* run server */

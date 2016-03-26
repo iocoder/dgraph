@@ -154,15 +154,55 @@ int get_dist(int dest) {
     return ret;
 }
 
+int init_relaxed(int unit_id) {
+    enum clnt_stat clnt_stat;
+    pars_t input = {0, 0};
+    int ret;
+    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, INITRELAX,
+                         (xdrproc_t) xdr_pars, (char *) &input,
+                         (xdrproc_t) xdr_ret, (char *) &ret);
+    if (clnt_stat != 0)
+        clnt_perrno (clnt_stat);
+    return ret;
+}
+
+int get_relaxed(int unit_id) {
+    enum clnt_stat clnt_stat;
+    pars_t input = {0, 0};
+    int ret;
+    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, GETRELAX,
+                         (xdrproc_t) xdr_pars, (char *) &input,
+                         (xdrproc_t) xdr_ret, (char *) &ret);
+    if (clnt_stat != 0)
+        clnt_perrno (clnt_stat);
+    return ret;
+}
+
 int query(int src, int dest) {
     int i, j;
     /* initialize dist in all nodes/units */
     for (i = 0; i < unit_count; i++)
         init_dist(i, src);
     /* perform n bellmanford phases */
-    for (i = 0; i < node_count; i++)
-        for (j = 0; j < unit_count; j++)
+    for (i = 0; i < node_count; i++) {
+        int relaxed = 0;
+        /* initialize relaxed */
+        for (j = 0; j < unit_count; j++) {
+            init_relaxed(j);
+        }
+        /* relax */
+        for (j = 0; j < unit_count; j++) {
+            /* printf("phase %d,%d\n", i, j); */
             bellmanford_phase(j);
+        }
+        /* relaxed? */
+        for (j = 0; j < unit_count; j++) {
+            relaxed |= get_relaxed(j);
+        }
+        /* break bellmanford? */
+        if (!relaxed)
+            break;
+    }
     /* ask for shortest path */
     return get_dist(dest);
 }
@@ -221,7 +261,7 @@ int main() {
         sscanf(buf, "%d%d", &f, &s);
         /* add edge */
         add_edge(f, s);
-        system("sleep 0.01");
+        /*system("sleep 0.01");*/
     }
     /* print R */
     printf("R\n");
@@ -256,7 +296,7 @@ int main() {
                         fprintf(stderr, "Invalid command %c\n", entry->cmd);
                         break;
                 }
-                system("sleep 0.01");
+                /*system("sleep 0.01");*/
             }
         } else {
             /* add entry to batch queue */

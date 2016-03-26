@@ -12,6 +12,8 @@
 #define UPDATEDIST ((u_long) 4)    /* procedure number for look-up */
 #define BELLFORD   ((u_long) 5)    /* procedure number for look-up */
 #define GETDIST    ((u_long) 6)    /* procedure number for look-up */
+#define INITRELAX  ((u_long) 7)    /* procedure number for look-up */
+#define GETRELAX   ((u_long) 8)    /* procedure number for look-up */
 #define INF        INT_MAX
 
 typedef struct pars {
