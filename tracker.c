@@ -9,7 +9,7 @@
 #define UNIT_COUNT         "unit_count"
 #define UNIT_IP            "unit"
 
-#define MAXBATCH           1
+#define MAXBATCH           1000
 
 typedef struct batch_entry {
     struct batch_entry *next;
@@ -23,7 +23,6 @@ int node_count = 0;
 char **unit_ip;
 batch_entry_t *batch_head = NULL;
 batch_entry_t *batch_tail = NULL;
-
 int *unit_batch_size;
 
 void batch_queue(batch_entry_t *entry) {
@@ -193,6 +192,47 @@ int add_batch(int unit_id, batch_t batch) {
     return ret;
 }
 
+void extract_batch(int unit_id) {
+    batch_t batch;
+    int j = 0;
+    batch_entry_t *prev = NULL;
+    batch_entry_t *entry = batch_head;
+    batch_entry_t *next;
+    batch.count  = unit_batch_size[unit_id];
+    batch.first  = malloc(sizeof(int)*batch.count);
+    batch.second = malloc(sizeof(int)*batch.count);
+    while (entry) {
+        next = entry->next;
+        if (node_to_unit(entry->f) == unit_id) {
+            batch.first[j] = entry->f;
+            batch.second[j] = entry->s;
+            if (entry->f+1 > node_count)
+                node_count = entry->f + 1;
+            if (entry->s+1 > node_count)
+                node_count = entry->s + 1;
+            j++;
+            if (prev) {
+                prev->next = next;
+                if (!next)
+                    batch_tail = prev;
+            } else {
+                batch_head = next;
+                if (!next)
+                    batch_tail = batch_head;
+            }
+            free(entry);
+        } else {
+            prev = entry;
+        }
+        entry = next;
+    }
+    /* now send batch to correspondent node */
+    add_batch(unit_id, batch);
+    /* free allocated stuff */
+    free(batch.first);
+    free(batch.second);
+}
+
 int query(int src, int dest) {
     int i, j;
     /* initialize dist in all nodes/units */
@@ -269,7 +309,7 @@ int main() {
     system("sleep 1");
     /* process input graph */
     while (1) {
-        int f, s;
+        int f, s, unit_id;
         batch_entry_t *entry;
         /* read line from standard input */
         fgets(buf, sizeof(buf)-1, stdin);
@@ -289,39 +329,17 @@ int main() {
         /* enqueue */
         batch_queue(entry);
         /* increase counters */
-        unit_batch_size[node_to_unit(entry->f)]++;
-    }
-    /* send in batches */
-    for (i = 0; i < unit_count; i++) {
-        batch_t batch;
-        int j = 0;
-        batch_entry_t *entry = batch_head;
-        batch.count  = unit_batch_size[i];
-        batch.first  = malloc(sizeof(int)*batch.count);
-        batch.second = malloc(sizeof(int)*batch.count);
-        while (entry) {
-            if (node_to_unit(entry->f) == i) {
-                batch.first[j] = entry->f;
-                batch.second[j] = entry->s;
-                if (entry->f+1 > node_count)
-                    node_count = entry->f + 1;
-                if (entry->s+1 > node_count)
-                    node_count = entry->s + 1;
-                j++;
-            }
-            entry = entry->next;
+        unit_id = node_to_unit(entry->f);
+        unit_batch_size[unit_id]++;
+        /* reached maximum? */
+        if (unit_batch_size[unit_id] == MAXBATCH) {
+            extract_batch(unit_id);
+            unit_batch_size[unit_id] = 0;
         }
-        /* now send batch to correspondent node */
-        add_batch(i, batch);
-        /* free allocated stuff */
-        free(batch.first);
-        free(batch.second);
     }
-    /* free the batch */
-    while (entry = batch_dequeue()) {
-        batch_entry_t *next = entry->next;
-        free(entry);
-        entry = next;
+    /* send all remaining batches */
+    for (i = 0; i < unit_count; i++) {
+        extract_batch(i);
     }
     /* print R */
     printf("R\n");

@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <rpc/rpc.h>
 #include "proto.h"
 
