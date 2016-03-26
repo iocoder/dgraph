@@ -9,6 +9,7 @@ int unit_id;
 int unit_count;
 char **unit_ip;
 int relaxed;
+int MAX_SIZE = 100;
 
 typedef struct edge_str {
     struct edge_str *next;
@@ -22,23 +23,32 @@ typedef struct node_str {
     struct edge_str *edges;
 } node_t;
 
-node_t *nodes = NULL;
-
-node_t *get_node(int id) {
-    node_t *ptr = nodes;
-    while (ptr && ptr->id != id && (ptr=ptr->next));
-    return ptr;
-}
+node_t **nodes = NULL;
 
 int node_to_unit(int id) {
     return (id % unit_count);
 }
 
-void print_subgraph() {
-    node_t *curnode = nodes;
+int node_to_index(int id) {
+    return (id/unit_count)%MAX_SIZE;
+}
+
+node_t *get_node_list(int id, node_t *list) {
+    node_t *ptr = list;
+    while (ptr && ptr->id != id && (ptr=ptr->next));
+    return ptr;
+}
+
+node_t *get_node_hash(int id) {
+    int index = node_to_index(id);
+    node_t *list = nodes[index];
+    node_t ret = get_node_list(id, list);
+    return ret;
+}
+
+void print_list(node_t *list) {
+    node_t *curnode = list;
     edge_t *curedge;
-    fprintf(debug, "CURRENT GRAPH\n");
-    fprintf(debug, "--------------\n");
     while (curnode) {
         fprintf(debug, "node %d (%d): ", curnode->id, curnode->dist_from_src);
         curedge = curnode->edges;
@@ -48,6 +58,16 @@ void print_subgraph() {
         }
         fprintf(debug, "\n");
         curnode = curnode->next;
+    }
+}
+
+void print_subgraph() {
+    fprintf(debug, "CURRENT GRAPH\n");
+    fprintf(debug, "--------------\n");
+    int i;
+    for(i=0; i<MAX_SIZE; i++) {
+        fprintf(debug, "hash: %d\n", i);
+        print_list(nodes[i]);
     }
     fprintf(debug, "---------------------------------------\n");
 }
@@ -60,11 +80,13 @@ int add_edge(int node1, int node2) {
         /* create src node */
         if (!(node = malloc(sizeof(node_t))))
             return 0; /* EMEM */
-        node->next = nodes;
+        int index = node_to_index(node1);
+        node_t *list = nodes[index];
+        node->next = list;
         node->id = node1;
         node->dist_from_src = INF;
         node->edges = NULL;
-        nodes = node;
+        list = node;
     }
     /* add edge? */
     if (node2 != -1) {
@@ -268,6 +290,7 @@ int main(int argc, char *argv[]) {
     unit_id = atoi(argv[1]);
     unit_count = atoi(argv[2]);
     unit_ip = malloc(sizeof(char *) * unit_count);
+    nodes   = malloc(sizeof(node_t*) * MAX_SIZE);
     tok = strtok(argv[3], ",");
     while (tok) {
         unit_ip[i++] = strcpy(malloc(strlen(tok)+1), tok);
@@ -301,6 +324,9 @@ int main(int argc, char *argv[]) {
                 __init_relaxed, (xdrproc_t) xdr_pars, (xdrproc_t) xdr_ret);
     registerrpc(PRGBASE+unit_id, PRGVERS, GETRELAX,
                 __get_relaxed, (xdrproc_t) xdr_pars, (xdrproc_t) xdr_ret);
+    
+    add_edge(1, 2);
+    
     /* output something */
     fprintf(debug, "Unit %d started.\n", unit_id);
     /* run server */
