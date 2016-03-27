@@ -7,14 +7,13 @@
 #include <sys/types.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <netdb.h>
 
 #include "proto.h"
 
 #define UNIT_COUNT         "unit_count"
 #define UNIT_IP            "unit"
 #define TRACKER_IP         "tracker"
-
-#define MAXBATCH           1000
 
 int unit_count;
 int node_count = 0;
@@ -25,6 +24,8 @@ batch_entry_t *batch_tail = NULL;
 int *unit_batch_size;
 volatile int finished;
 int pipefd[2] = {10, 11};
+
+bool_t pmap_unset(unsigned long prognum, unsigned long versnum);
 
 void batch_queue(batch_entry_t *entry) {
     if (batch_tail == NULL) {
@@ -56,6 +57,43 @@ int node_to_unit(int id) {
     return (id % unit_count);
 }
 
+int callrpctcp(char *host, int prognum, int versnum, int procnum,
+               xdrproc_t inproc, char *in,
+               xdrproc_t outproc, char *out) {
+    /* local vars */
+    struct hostent *hp;
+    struct sockaddr_in server_addr;
+    register CLIENT *client;
+    int socket = RPC_ANYSOCK;
+    struct timeval total_timeout;
+    enum clnt_stat clnt_stat;
+    /* get hostent structure */
+    if ((hp = gethostbyname(host)) == NULL) {
+        fprintf(stderr, "can't get addr for '%s'\n", host);
+        return (-1);
+    }
+    /* initialize server_addr structure */
+    bcopy(hp->h_addr, (caddr_t)&server_addr.sin_addr, hp->h_length);
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port =  0;
+    /* create client structure */
+    if ((client = clnttcp_create(&server_addr, prognum,
+                                 versnum, &socket, BUFSIZ, BUFSIZ)) == NULL) {
+        fprintf(stderr, "can't create client structure\n");
+        return (-1);
+    }
+    /* set timeout */
+    total_timeout.tv_sec = 20;
+    total_timeout.tv_usec = 0;
+    /* do the call */
+    clnt_stat = clnt_call(client, procnum,
+                          inproc, in, outproc, out, total_timeout);
+    /* destroy client */
+    clnt_destroy(client);
+    /* done */
+    return ((int)clnt_stat);
+}
+
 int add_edge(int f, int s) {
     int unit_id, ret;
     enum clnt_stat clnt_stat;
@@ -64,9 +102,10 @@ int add_edge(int f, int s) {
     input.first = f;
     input.second = s;
     unit_id = node_to_unit(f);
-    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, ADDEDGE,
-                         (xdrproc_t) xdr_pars, (char *) &input,
-                         (xdrproc_t) xdr_ret, (char *) &ret);
+    clnt_stat = callrpctcp(unit_ip[unit_id], PRGBASE+unit_id, PRGVERS,
+                           ADDEDGE,
+                           (xdrproc_t) xdr_pars, (char *) &input,
+                           (xdrproc_t) xdr_ret, (char *) &ret);
     if (clnt_stat != 0)
         clnt_perrno (clnt_stat);
     if (!ret)
@@ -98,9 +137,10 @@ int rem_edge(int f, int s) {
     enum clnt_stat clnt_stat;
     pars_t input = {f, s};
     int ret;
-    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, REMEDGE,
-                         (xdrproc_t) xdr_pars, (char *) &input,
-                         (xdrproc_t) xdr_ret, (char *) &ret);
+    clnt_stat = callrpctcp(unit_ip[unit_id], PRGBASE+unit_id, PRGVERS,
+                           REMEDGE,
+                           (xdrproc_t) xdr_pars, (char *) &input,
+                           (xdrproc_t) xdr_ret, (char *) &ret);
     if (clnt_stat != 0)
         clnt_perrno (clnt_stat);
     return ret;
@@ -110,9 +150,10 @@ int init_dist(int unit_id, int src) {
     enum clnt_stat clnt_stat;
     pars_t input = {src, 0};
     int ret;
-    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, INITDIST,
-                         (xdrproc_t) xdr_pars, (char *) &input,
-                         (xdrproc_t) xdr_ret, (char *) &ret);
+    clnt_stat = callrpctcp(unit_ip[unit_id], PRGBASE+unit_id, PRGVERS,
+                           INITDIST,
+                           (xdrproc_t) xdr_pars, (char *) &input,
+                           (xdrproc_t) xdr_ret, (char *) &ret);
     if (clnt_stat != 0)
         clnt_perrno (clnt_stat);
     return ret;
@@ -123,9 +164,10 @@ int update_dist(int src, int dist) {
     enum clnt_stat clnt_stat;
     pars_t input = {src, dist};
     int ret;
-    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, UPDATEDIST,
-                         (xdrproc_t) xdr_pars, (char *) &input,
-                         (xdrproc_t) xdr_ret, (char *) &ret);
+    clnt_stat = callrpctcp(unit_ip[unit_id], PRGBASE+unit_id, PRGVERS,
+                           UPDATEDIST,
+                           (xdrproc_t) xdr_pars, (char *) &input,
+                           (xdrproc_t) xdr_ret, (char *) &ret);
     if (clnt_stat != 0)
         clnt_perrno (clnt_stat);
     return ret;
@@ -135,9 +177,10 @@ int bellmanford_phase(int unit_id) {
     enum clnt_stat clnt_stat;
     pars_t input = {0, 0};
     int ret;
-    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, BELLFORD,
-                         (xdrproc_t) xdr_pars, (char *) &input,
-                         (xdrproc_t) xdr_ret, (char *) &ret);
+    clnt_stat = callrpctcp(unit_ip[unit_id], PRGBASE+unit_id, PRGVERS,
+                           BELLFORD,
+                           (xdrproc_t) xdr_pars, (char *) &input,
+                           (xdrproc_t) xdr_ret, (char *) &ret);
     if (clnt_stat != 0)
         clnt_perrno (clnt_stat);
     return ret;
@@ -148,9 +191,10 @@ int get_dist(int dest) {
     enum clnt_stat clnt_stat;
     pars_t input = {dest, 0};
     int ret;
-    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, GETDIST,
-                         (xdrproc_t) xdr_pars, (char *) &input,
-                         (xdrproc_t) xdr_ret, (char *) &ret);
+    clnt_stat = callrpctcp(unit_ip[unit_id], PRGBASE+unit_id, PRGVERS,
+                           GETDIST,
+                           (xdrproc_t) xdr_pars, (char *) &input,
+                           (xdrproc_t) xdr_ret, (char *) &ret);
     if (clnt_stat != 0)
         clnt_perrno (clnt_stat);
     if (ret == INF)
@@ -162,9 +206,10 @@ int init_relaxed(int unit_id) {
     enum clnt_stat clnt_stat;
     pars_t input = {0, 0};
     int ret;
-    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, INITRELAX,
-                         (xdrproc_t) xdr_pars, (char *) &input,
-                         (xdrproc_t) xdr_ret, (char *) &ret);
+    clnt_stat = callrpctcp(unit_ip[unit_id], PRGBASE+unit_id, PRGVERS,
+                           INITRELAX,
+                           (xdrproc_t) xdr_pars, (char *) &input,
+                           (xdrproc_t) xdr_ret, (char *) &ret);
     if (clnt_stat != 0)
         clnt_perrno (clnt_stat);
     return ret;
@@ -174,9 +219,10 @@ int get_relaxed(int unit_id) {
     enum clnt_stat clnt_stat;
     pars_t input = {0, 0};
     int ret;
-    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, GETRELAX,
-                         (xdrproc_t) xdr_pars, (char *) &input,
-                         (xdrproc_t) xdr_ret, (char *) &ret);
+    clnt_stat = callrpctcp(unit_ip[unit_id], PRGBASE+unit_id, PRGVERS,
+                           GETRELAX,
+                           (xdrproc_t) xdr_pars, (char *) &input,
+                           (xdrproc_t) xdr_ret, (char *) &ret);
     if (clnt_stat != 0)
         clnt_perrno (clnt_stat);
     return ret;
@@ -185,9 +231,10 @@ int get_relaxed(int unit_id) {
 int add_batch(int unit_id, batch_t batch) {
     enum clnt_stat clnt_stat;
     int ret;
-    clnt_stat = callrpc (unit_ip[unit_id], PRGBASE+unit_id, PRGVERS, ADDBATCH,
-                         (xdrproc_t) xdr_batch_encode, (char *) &batch,
-                         (xdrproc_t) xdr_ret, (char *) &ret);
+    clnt_stat = callrpctcp(unit_ip[unit_id], PRGBASE+unit_id, PRGVERS,
+                           ADDBATCH,
+                           (xdrproc_t) xdr_batch_encode, (char *) &batch,
+                           (xdrproc_t) xdr_ret, (char *) &ret);
     if (clnt_stat != 0)
         clnt_perrno (clnt_stat);
     return ret;
@@ -274,17 +321,46 @@ int query(int src, int dest) {
     return get_dist(dest);
 }
 
-char *__finished(char *input) {
-    char *ret = malloc(sizeof(int));
+int __finished(char *input) {
     char c;
     /* write to pipe */
     write(pipefd[1], &c, 1);
-    return ret;
+    return 1;
 }
 
 void exit_tracker(int sig) {
     /* safe exit */
     exit(0);
+}
+
+void do_rpc(SVCXPRT *transp, int (*func)(char *),
+            xdrproc_t inproc, xdrproc_t outproc) {
+    char input[MAXBATCH*16];
+    int ret;
+    if (!svc_getargs(transp, inproc, input)) {
+        svcerr_decode(transp);
+        return;
+    }
+    ret = func(input);
+    if (!svc_sendreply(transp, outproc, (char *) &ret))
+        fprintf(stderr, "Can't reply to RPC call\n");
+}
+
+void dispatch(struct svc_req *request, SVCXPRT *transp) {
+    switch (request->rq_proc) {
+        case NULLPROC:
+            if (svc_sendreply(transp, (xdrproc_t) xdr_void, 0) == 0)
+                fprintf(stderr, "err: rcp_service");
+            return;
+        case FINISHED:
+            do_rpc(transp, __finished,
+                   (xdrproc_t) xdr_pars, (xdrproc_t) xdr_ret);
+            return;
+        default:
+            fprintf(stderr, "no RPC procedure\n");
+            svcerr_noproc(transp);
+            return;
+    }
 }
 
 int main() {
@@ -293,6 +369,7 @@ int main() {
     char ip_address_str[4096] = "";
     char buf[4096];
     int childpid;
+    SVCXPRT *transp;
     batch_entry_t *entry;
     /* print splash */
     printf("**************************************************************\n");
@@ -345,9 +422,18 @@ int main() {
     pipe(pipefd);
     /* fork and reserve */
     if (!(childpid = fork())) {
-        /* register tracker RPC routines */
-        registerrpc(PRGBASE+unit_count, PRGVERS, FINISHED, __finished,
-                    (xdrproc_t) xdr_pars, (xdrproc_t) xdr_ret);
+        /* register RPC */
+        transp = svctcp_create(RPC_ANYSOCK, MAXBATCH*16, MAXBATCH*16);
+        if (transp == NULL) {
+            fprintf(stderr, "Can't create an RPC server\n");
+            exit(1);
+        }
+        pmap_unset(PRGBASE+unit_count, PRGVERS);
+        if (!svc_register(transp, PRGBASE+unit_count, PRGVERS,
+                          dispatch, IPPROTO_TCP)){
+            fprintf(stderr, "can't register RPC service\n");
+            exit(1);
+        }
         /* serve RPC calls */
         svc_run();
     }

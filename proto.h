@@ -20,6 +20,10 @@
 
 #define INF        INT_MAX
 
+#define MAX_SIZE        10000  /* hashtable size */
+#define MAXBATCH        10000  /* batch size */
+#define STACKSIZE       0x1000000 /* bellman ford stack size */
+
 typedef struct pars {
     int first;
     int second;
@@ -48,14 +52,6 @@ int xdr_pars(XDR *xdrpars, void *input);
 int xdr_ret(XDR *xdrpars, void *input);
 int xdr_batch_encode(XDR *xdrpars, void *input);
 int xdr_batch_decode(XDR *xdrpars, void *input);
-
-/* unit routines */
-char *__add_edge(char *input);
-char *__rem_edge(char *input);
-char *__init_dist(char *input);
-char *__update_dist(char *input);
-char *__bellmanford_phase(char *input);
-char *__get_dist(char *input);
 
 /* configuration routines */
 void read_conf();
