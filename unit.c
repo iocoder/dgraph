@@ -387,6 +387,18 @@ int update_batch(batch_t *batch) {
         update_dist(batch->first[i], batch->second[i]);
 }
 
+int exec_batch(batch_t *batch) {
+    int i;
+    /*fprintf(debug, "received update batch! count: %d\n", batch->count);*/
+    for (i = 0; i < batch->count; i++) {
+        if (batch->cmd[i] == 'A') {
+            add_edge(batch->first[i], batch->second[i]);
+        } else if (batch->cmd[i] == 'D') {
+            rem_edge(batch->first[i], batch->second[i]);
+        }
+    }
+}
+
 int update_batch_client(int unit_id, batch_t batch) {
     enum clnt_stat clnt_stat;
     int ret;
@@ -406,11 +418,13 @@ void extract_batch(int uid) {
     batch_entry_t *entry = batch_head;
     batch_entry_t *next;
     batch.count  = unit_batch_size[uid];
+    batch.cmd  = malloc(sizeof(char)*batch.count + 1);
     batch.first  = malloc(sizeof(int)*batch.count + 1);
     batch.second = malloc(sizeof(int)*batch.count + 1);
     while (entry) {
         next = entry->next;
         if (node_to_unit(entry->f) == uid) {
+            batch.cmd[j] = entry->cmd;
             batch.first[j] = entry->f;
             batch.second[j] = entry->s;
             j++;
@@ -433,6 +447,7 @@ void extract_batch(int uid) {
     if (batch.count)
         update_batch_client(uid, batch);
     /* free allocated stuff */
+    free(batch.cmd);
     free(batch.first);
     free(batch.second);
     /* reset counter */
@@ -514,6 +529,10 @@ int __update_batch(char *input) {
     return update_batch((batch_t *) input);
 }
 
+int __exec_batch(char *input) {
+    return exec_batch((batch_t *) input);
+}
+
 void exit_unit(int sig) {
     /* safe exit */
     fclose(debug);
@@ -531,11 +550,13 @@ void *child_main(void *arg) {
 void do_rpc(SVCXPRT *transp, int (*func)(char *),
             xdrproc_t inproc, xdrproc_t outproc) {
     char input[32];
-    int array1[MAXBATCH];
+    char array1[MAXBATCH];
     int array2[MAXBATCH];
+    int array3[MAXBATCH];
     int ret;
-    ((batch_t *) input)->first = array1;
-    ((batch_t *) input)->second = array2;
+    ((batch_t *) input)->cmd = array1;
+    ((batch_t *) input)->first = array2;
+    ((batch_t *) input)->second = array3;
     if (!svc_getargs(transp, inproc, input)) {
         svcerr_decode(transp);
         return;
@@ -589,6 +610,10 @@ void dispatch(struct svc_req *request, SVCXPRT *transp) {
             return;
         case UPDBATCH:
             do_rpc(transp, __update_batch,
+                   (xdrproc_t) xdr_batch_decode, (xdrproc_t) xdr_ret);
+            return;
+        case EXCBATCH:
+            do_rpc(transp, __exec_batch,
                    (xdrproc_t) xdr_batch_decode, (xdrproc_t) xdr_ret);
             return;
         default:

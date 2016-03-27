@@ -240,6 +240,18 @@ int add_batch(int unit_id, batch_t batch) {
     return ret;
 }
 
+int exec_batch(int unit_id, batch_t batch) {
+    enum clnt_stat clnt_stat;
+    int ret;
+    clnt_stat = callrpctcp(unit_ip[unit_id], PRGBASE+unit_id, PRGVERS,
+                           EXCBATCH,
+                           (xdrproc_t) xdr_batch_encode, (char *) &batch,
+                           (xdrproc_t) xdr_ret, (char *) &ret);
+    if (clnt_stat != 0)
+        clnt_perrno (clnt_stat);
+    return ret;
+}
+
 void extract_batch(int unit_id) {
     batch_t batch;
     int j = 0;
@@ -247,11 +259,13 @@ void extract_batch(int unit_id) {
     batch_entry_t *entry = batch_head;
     batch_entry_t *next;
     batch.count  = unit_batch_size[unit_id];
+    batch.cmd    = malloc(sizeof(char)*batch.count);
     batch.first  = malloc(sizeof(int)*batch.count);
     batch.second = malloc(sizeof(int)*batch.count);
-    while (entry) {
+    while (entry && entry->cmd != 'Q') {
         next = entry->next;
         if (node_to_unit(entry->f) == unit_id) {
+            batch.cmd[j] = entry->cmd;
             batch.first[j] = entry->f;
             batch.second[j] = entry->s;
             if (entry->f+1 > node_count)
@@ -275,8 +289,9 @@ void extract_batch(int unit_id) {
         entry = next;
     }
     /* now send batch to correspondent node */
-    add_batch(unit_id, batch);
+    exec_batch(unit_id, batch);
     /* free allocated stuff */
+    free(batch.cmd);
     free(batch.first);
     free(batch.second);
     /* reset counter */
@@ -363,6 +378,14 @@ void dispatch(struct svc_req *request, SVCXPRT *transp) {
     }
 }
 
+void count_batch() {
+    batch_entry_t *entry = batch_head;
+    while (entry && entry->cmd != 'Q') {
+        unit_batch_size[node_to_unit(entry->f)]++;
+        entry = entry->next;
+    }
+}
+
 int main() {
     int i;
     char i_str[100], unit_count_str[100];
@@ -438,7 +461,7 @@ int main() {
         svc_run();
     }
     /* wait for 1 second */
-    system("sleep 0.3");
+    system("sleep 2");
     /* process input graph */
     while (1) {
         int f, s, unit_id;
@@ -490,22 +513,19 @@ int main() {
         /* end of batch? */
         if (!strcmp(buf, "F\n")) {
             /* process batch */
-            while (entry = batch_dequeue()) {
-                switch (entry->cmd) {
-                    case 'A':
-                        add_edge(entry->f, entry->s);
-                        break;
-                    case 'D':
-                        rem_edge(entry->f, entry->s);
-                        break;
-                    case 'Q':
-                        printf("%d\n", query(entry->f, entry->s));
-                        break;
-                    default:
-                        fprintf(stderr, "Invalid command %c\n", entry->cmd);
-                        break;
+            while (batch_head) {
+                /* there is something to process */
+                if (batch_head->cmd == 'Q') {
+                    /* query */
+                    entry = batch_dequeue();
+                    printf("%d\n", query(entry->f, entry->s));
+                    free(entry);
+                } else {
+                    /* add/delete */
+                    count_batch();
+                    for (i = 0; i < unit_count; i++)
+                        extract_batch(i);
                 }
-                /*system("sleep 0.01");*/
             }
         } else {
             /* add entry to batch queue */

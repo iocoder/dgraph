@@ -17,6 +17,7 @@
 #define ADDBATCH   ((u_long)  9)   /* procedure number */
 #define UPDBATCH   ((u_long) 10)   /* procedure number */
 #define FINISHED   ((u_long) 11)   /* procedure number */
+#define EXCBATCH   ((u_long) 12)   /* procedure number */
 
 #define INF        INT_MAX
 
@@ -31,6 +32,7 @@ typedef struct pars {
 
 typedef struct batch {
     int count;
+    char *cmd;
     int *first;
     int *second;
 } batch_t;
